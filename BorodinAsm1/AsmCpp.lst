@@ -1,0 +1,189 @@
+Microsoft (R) Macro Assembler Version 14.00.24245.0	    04/20/20 15:32:56
+HexToStr.asm						     Page 1 - 1
+
+
+				.686
+
+				.MODEL FLAT, C
+
+				.STACK
+ 00000000			.DATA
+
+				;-----------Local data------------------------------
+ 00000000 00			Data DB 0h
+ 00000000			.CODE
+				    include Power.inc
+ 00000000		      C Power	 	proc
+ 00000000  50		      C 		push 	eax
+ 00000001  51		      C 		push	ecx
+			      C 		
+ 00000002  B8 00000001	      C 		mov	eax, 1		;Регистр временного размещения результата
+			      C 		
+ 00000007		      C @@Loop:					 
+ 00000007  83 F9 01	      C 		cmp	ecx, 1		;Если закончили умножать число само на себя ECX раз,
+ 0000000A  76 06	      C 		jna	@@EndProc	;то выходим.
+			      C 					;Иначе продолжаем возводить число в степень,
+ 0000000C  C1 E0 04	      C 		shl eax, 4		;сдвигая на 4 разряда,
+ 0000000F  49		      C 		dec	ecx		;а затем уменьшая количество оставшихся умножений числа. 
+ 00000010  EB F5	      C 		jmp	@@Loop		;Переходим на следующую итерацию
+			      C 		
+ 00000012		      C @@EndProc:
+ 00000012  8B D8	      C 		mov	ebx, eax	;Переносим результат возведения в степень
+ 00000014  59		      C 		pop	ecx
+ 00000015  58		      C 		pop	eax
+ 00000016  C3		      C 		ret
+ 00000017		      C Power		endp
+			      C 
+				    include HexToC.inc
+ 00000017		      C HexToChar	proc
+ 00000017  66| 52	      C 		push	dx
+			      C 
+ 00000019  3C 09	      C 		cmp 	al, 9		;Если шестнадцатиричная цифра больше 9, 
+ 0000001B  77 06	      C 		ja	@@Alpha		;то преобразование цифры в символ происходит по алгоритму,
+			      C 					;написанному после метки @@Alpha
+			      C 		
+ 0000001D  B2 30	      C 		mov	dl, '0'		;иначе получаем код символа
+ 0000001F  02 D0	      C 		add	dl, al		;смещением на al позиций относительно кода "0" 	
+ 00000021  EB 04	      C 		jmp	@@EndProcChar
+			      C 		
+ 00000023		      C @@Alpha:
+ 00000023  B2 37	      C 		mov	dl, 'A' - 10	;для шестнадцатиричных цифр A-F код символа можеть быть получен по
+ 00000025  02 D0	      C 		add	dl, al		;формуле: код символа = 'A' - (Цифра - 10)
+			      C 				
+ 00000027		      C @@EndProcChar:	
+ 00000027  8A C2	      C 		mov	al, dl
+ 00000029  66| 5A	      C 		pop	dx
+ 0000002B  C3		      C 		ret
+ 0000002C		      C HexToChar 	endp
+			      C 
+				    
+
+ 0000002C			HexToStr proc ;C num:dword, arr:dword, n:dword, last:dword
+
+ 0000002C  55			        push ebp           ; пролог: сохранение EBP
+ 0000002D  8B EC		        mov ebp, esp       ; пролог: инициализация EBP
+
+
+ 0000002F  53			        push    ebx
+ 00000030  51			        push    ecx
+ 00000031  52			        push    edx
+
+
+ 00000032  8B 45 08		        mov eax, [ebp+8]   ; доступ к аргументу 4
+ 00000035  8B 7D 0C		        mov edi, [ebp+12] ; доступ к аргументу 3
+ 00000038  8B 4D 10		        mov ecx, [ebp+16] ; доступ к аргументу 2
+
+				       ; mov eax, num
+				       ; mov ecx, n
+				       ; mov edi, arr
+
+ 0000003B  83 F9 08		        cmp     ecx, 8      ;???? ?????? ?????? ?????? 8,
+ 0000003E  72 3D		        jb  @@BufferTooSmall
+
+ 00000040  83 FF 00		        cmp edi, 0
+ 00000043  74 3F		        je @@InvalidArgs
+				                    ;?? ??????? ?? ???????
+				        
+ 00000045  B9 00000008		        mov     ecx, 8      
+
+ 0000004A			@@ExctractHexLoop:
+				                    ;???? ????????????????? ?????????
+				                    ;???????? ?????, ??????? ?? ????????
+ 0000004A  BB 00000010		        mov     ebx, 16 
+ 0000004F  E8 FFFFFFAC		        call    Power       ;???????? 16 ? ??????? ??????????? ???????
+				        
+ 00000054  BA 00000000				mov	edx, 0		;и делим на него оставшееся число
+ 00000059  F7 F3				div	ebx		;EAX = частное(выделенный разряд)
+									;EDX = остаток(оставшаяся часть числа)
+
+ 0000005B  E8 FFFFFFB7		        call    HexToChar   ;????????? ?????????? ?????? ? ??????
+				        
+ 00000060  26: 88 07		        mov es:[edi], al    ;?????????? ??? ? ??????
+ 00000063  47			        inc     edi     ;? ????????? ? ?????????? ??????? ? ??????
+
+ 00000064  8B C2		        mov     eax, edx    ;????? ????????? ?????????? ?????,
+
+ 00000066  E2 E2		        loop    @@ExctractHexLoop   ;? ?????????? ????????? ?????
+
+ 00000068  50			        push eax
+ 00000069  8B 45 14		        mov eax, [ebp+20]
+ 0000006C  83 F8 00		        cmp eax, 0
+ 0000006F  58			        pop eax
+ 00000070  74 04		        je @@EndLoop
+ 00000072  47			        inc edi
+ 00000073  89 7D 14		        mov [ebp+20], edi
+				 
+
+ 00000076			@@EndLoop:              ;????? ??? ??????
+ 00000076  B8 00000000		        mov eax, 0
+ 0000007B  EB 0C		        jmp @@EndProcHex
+				        
+ 0000007D			@@BufferTooSmall:           ;????? ? ??????? "????? ??????? ???"
+ 0000007D  B8 8007000E		        mov     eax, 8007000Eh
+ 00000082  EB 05		        jmp @@EndProcHex
+
+ 00000084			@@InvalidArgs:
+ 00000084  B8 80070057		        mov     eax, 80070057h
+
+
+ 00000089			        @@EndProcHex:
+ 00000089  5A			        pop     edx
+ 0000008A  59			        pop ecx
+ 0000008B  5B			        pop ebx
+
+ 0000008C  5D			        pop ebp
+ 0000008D  C3			        ret
+
+ 0000008E			HexToStr endp
+				end 
+Microsoft (R) Macro Assembler Version 14.00.24245.0	    04/20/20 15:32:56
+HexToStr.asm						     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00000400 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 00000001 Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 0000008E Para	  Public  'CODE'	
+
+
+Procedures, parameters, and locals:
+
+                N a m e                 Type     Value    Attr
+
+HexToChar  . . . . . . . . . . .	P Near	 00000017 _TEXT	Length= 00000015 Public C
+  @@Alpha  . . . . . . . . . . .	L Near	 00000023 _TEXT	
+  @@EndProcChar  . . . . . . . .	L Near	 00000027 _TEXT	
+HexToStr . . . . . . . . . . . .	P Near	 0000002C _TEXT	Length= 00000062 Public C
+  @@ExctractHexLoop  . . . . . .	L Near	 0000004A _TEXT	
+  @@EndLoop  . . . . . . . . . .	L Near	 00000076 _TEXT	
+  @@BufferTooSmall . . . . . . .	L Near	 0000007D _TEXT	
+  @@InvalidArgs  . . . . . . . .	L Near	 00000084 _TEXT	
+  @@EndProcHex . . . . . . . . .	L Near	 00000089 _TEXT	
+Power  . . . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000017 Public C
+  @@Loop . . . . . . . . . . . .	L Near	 00000007 _TEXT	
+  @@EndProc  . . . . . . . . . .	L Near	 00000012 _TEXT	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000001h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+Data . . . . . . . . . . . . . .	Byte	 00000000 _DATA	
+
+	   0 Warnings
+	   0 Errors

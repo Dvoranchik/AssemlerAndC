@@ -1,0 +1,294 @@
+Microsoft (R) Macro Assembler Version 14.00.24245.0	    04/21/20 14:52:58
+StrToInt.asm						     Page 1 - 1
+
+
+				.686
+				.MODEL FLAT, C
+				.STACK
+ 00000000			.DATA
+				;-----------Local data------------------------------
+ 00000000			.CODE
+				include SkipSp.inc
+			      C  ;
+			      C ; Процедура, пропуска пробельных символов в начале строки
+			      C ;
+			      C ; Вход:
+			      C ;		DS:ESI - строка
+			      C ; Выход:
+			      C ;		DS:ESI - строка
+			      C ;
+ 00000000		      C SkipSpace proc
+ 00000000		      C @@Loop:
+ 00000000  AC		      C 			lodsb 						; считываем символ в AL
+ 00000001  3C 20	      C 			cmp		al, ' '				; Проверяем пробел ли это
+ 00000003  74 FB	      C 			je		@@Loop			; если да - идем дальше
+ 00000005  C3		      C 			ret
+			      C 			
+ 00000006		      C SkipSpace endp
+			      C 
+				include IsNeg.inc
+			      C ;
+			      C ; Проверка числа на отрицательность
+			      C ;
+			      C ; Вход: AL - символ в начале числа
+			      C ; Выход: EBX = -1 / 1 (отриц./полож.)
+			      C ;
+ 00000006		      C IsNegative proc
+ 00000006  3C 2D	      C 			cmp		al, '-'  ;сравниваем с минусом
+ 00000008  74 01	      C 			je 		@@Negative
+ 0000000A  C3		      C 			ret
+			      C 			
+ 0000000B		      C @@Negative:
+ 0000000B  BB FFFFFFFF	      C 			mov		ebx, -1 ;помещаем -1
+ 00000010  AC		      C 			lodsb			  ;берем следующий символ
+ 00000011  C3		      C 			ret
+			      C 		
+ 00000012		      C IsNegative endp 
+			      C 
+				include CheckZ.inc
+			      C ;
+			      C ; Процедура проверки проверки исключительной ситуации с нулем, в начале разряда
+			      C ;
+			      C ; Вход:
+			      C ;		EBX = -1 / 1 (в зависимости от знака числа)
+			      C ;		AL - символ в строке, старший разряд
+			      C ; Выход:
+			      C ;		EBX = 3 - разряд равен 0
+			      C ;		EBX = 2 - '-0' в строке
+			      C ;		EBX = -1 / 1, иначе
+			      C ;
+ 00000012		      C CheckZero proc
+ 00000012  83 FB FF	      C 			cmp		ebx, -1		;отрицательное ли число
+ 00000015  74 0B	      C 			je		@@Negative	
+			      C 			
+ 00000017  3C 30	      C 			cmp		al, '0'			;если нет проверяем на 0
+ 00000019  74 01	      C 			je		@@SingleZero	;если да помещаем 3
+ 0000001B  C3		      C 			ret
+			      C 			
+ 0000001C		      C @@SingleZero:
+ 0000001C  BB 00000003	      C 			mov		ebx, 3			;помещаем 3
+ 00000021  C3		      C 			ret
+			      C 			
+ 00000022		      C @@Negative:						; если отрицательное
+ 00000022  3C 30	      C 			cmp		al, '0'			; проверяем на ноль следующий
+ 00000024  74 01	      C 			je		@@NegativeZero	; если ноль то добавляем 2 
+ 00000026  C3		      C 			ret
+			      C 			
+ 00000027		      C @@NegativeZero:				
+ 00000027  BB 00000002	      C 			mov		ebx, 2
+ 0000002C  C3		      C 			ret
+			      C 			
+ 0000002D		      C CheckZero endp
+			      C 
+				include Conv.inc
+			      C ;
+			      C ; Процедура, осуществляющая перевод содержимого строки в десятичное знаковое число
+			      C ; 
+			      C ; Вход:
+			      C ;	DS:ESI - адрес строки
+			      C ; Выход:	
+			      C ;	EAX - код ошибки (2, 4)	
+			      C ;
+ 0000002D		      C Convert proc
+ 0000002D  33 C0	      C 			xor		eax, eax				; Обнуляем AX
+ 0000002F  33 D2	      C 			xor		edx, edx				; Обнуляем DX
+			      C 		
+ 00000031  E8 FFFFFFCA	      C 			call	SkipSpace				; Пропуск пробелов
+			      C 		
+ 00000036  BB 00000001	      C 			mov		ebx, 1					; EBX = 1 Положительное число
+ 0000003B  E8 FFFFFFC6	      C 			call 	IsNegative
+			      C 		
+ 00000040  E8 FFFFFFCD	      C 			call	CheckZero				; Проверка на '-0' и 0
+ 00000045  83 FB 02	      C 			cmp		ebx, 2					; если -0, то EBX == 2
+ 00000048  74 67	      C 			je		@@InvalidSymb			; Тогда выдаем ошибку некорректного символа
+			      C 		
+ 0000004A  83 FB 03	      C 			cmp		ebx, 3					; Если первый разряд '+0'
+ 0000004D  74 69	      C 			je		@@Zero
+			      C 		
+ 0000004F  3C 30	      C 			cmp		al, '0'					; Проверка на корректность первого символа
+ 00000051  72 5E	      C 			jb		@@InvalidSymb			; Проверка что символ = 0-9
+ 00000053  3C 39	      C 			cmp		al, '9'
+ 00000055  7F 5A	      C 			jg		@@InvalidSymb 
+			      C 			
+ 00000057  3C 30	      C 			cmp		al, '0'
+ 00000059  4E		      C 			dec		esi
+			      C 		
+ 0000005A		      C @@ExtractSymbol:
+ 0000005A  8A 06	      C 			mov		al, byte ptr ds:[esi]		; Берем очередной символ
+			      C 
+ 0000005C  EB 2C	      C 			jmp		@@IsStop				;  Проверка на остановку подсчету
+ 0000005E  EB 47	      C 			jmp		@@IsCorrect				; Проверка, корректен ли очередной символ
+ 00000060		      C @@Extract:		
+ 00000060  83 FB FF	      C 			cmp		ebx, -1
+ 00000063  74 0E	      C 			je		@@ExtractNeg
+			      C 		
+ 00000065		      C @@ExtractPos:
+ 00000065  2C 30	      C 			sub		al, '0' 				; Получаем число
+ 00000067  6B D2 0A	      C 			imul	edx, 10
+ 0000006A  70 34	      C 			jo		@@Overflow				;проверка не переполнение
+ 0000006C  03 D0	      C 			add		edx, eax
+ 0000006E  70 30	      C 			jo		@@Overflow				;проверка не переполнение
+ 00000070  46		      C 			inc		esi
+ 00000071  EB E7	      C 			jmp		@@ExtractSymbol
+			      C 
+ 00000073		      C @@ExtractNeg:
+ 00000073  2C 30	      C 			sub 	al, '0'
+ 00000075  6B D2 0A	      C 			imul	edx, 10
+ 00000078  70 26	      C 			jo		@@Overflow				;проверка не переполнение
+ 0000007A  2B D0	      C 			sub		edx, eax
+ 0000007C  70 22	      C 			jo		@@Overflow
+ 0000007E  46		      C 			inc		esi
+ 0000007F  EB D9	      C 			jmp		@@ExtractSymbol
+			      C 		
+ 00000081		      C @@StopExtract:
+ 00000081  8B DA	      C 			mov		ebx, edx				; Сохраняем значение в EBX
+			      C 								
+ 00000083  B8 00000000	      C 			mov		eax, 0
+ 00000088  EB 4C	      C 			jmp		@@EndProc
+			      C 
+ 0000008A		      C @@IsStop:
+ 0000008A  3C 2C	      C 			cmp		al, ','
+ 0000008C  74 F3	      C 			je		@@StopExtract
+ 0000008E  3C 20	      C 			cmp		al, ' '
+ 00000090  74 EF	      C 			je		@@StopExtract
+ 00000092  3C 0A	      C 			cmp		al, 10			;\n
+ 00000094  74 EB	      C 			je		@@StopExtract
+ 00000096  3C 00	      C 			cmp		al, 0			; \0
+ 00000098  74 E7	      C 			je		@@StopExtract	
+ 0000009A  3C 0D	      C 			cmp		al, 13			; \r
+ 0000009C  74 E3	      C 			je		@@StopExtract
+ 0000009E  EB C0	      C 			jmp		@@Extract
+			      C 
+ 000000A0		      C @@Overflow:
+ 000000A0  B8 8000F001	      C 			mov		eax, 8000F001h						; Устанавливаем код ошибки = 4 - переполнение
+ 000000A5  EB 2F	      C 			jmp 	@@EndProc
+			      C 		
+ 000000A7		      C @@IsCorrect:								; Проверка, на то что символ есть
+ 000000A7  3C 30	      C 			cmp		al, '0'						; символ '0'-'9'
+ 000000A9  72 06	      C 			jb		@@InvalidSymb				; Если нет, то некорректный символ
+ 000000AB  3C 39	      C 			cmp		al, '9'
+ 000000AD  7F 02	      C 			jg		@@InvalidSymb 
+ 000000AF  EB AF	      C 			jmp		@@Extract
+			      C 		
+ 000000B1		      C @@InvalidSymb:		
+ 000000B1  B8 8000F000	      C 			mov		eax, 8000F000h						; Код ошибки = 3 - Некорректный символ
+ 000000B6  EB 1E	      C 			jmp		@@EndProc
+			      C 		
+ 000000B8		      C @@Zero:										; Обработка ситуации - старший разряд = '0'
+ 000000B8  46		      C 			inc		esi
+ 000000B9  8A 06	      C 			mov		al, byte ptr ds:[esi]		; Берем очередной символ
+			      C 		
+ 000000BB  BA 00000000	      C 			mov		edx, 0						; Помещаем текущее значение = 0
+ 000000C0  3C 2C	      C 			cmp		al, ','						; Проверка на символ после нуля
+ 000000C2  74 BD	      C 			je		@@StopExtract				; -если, символ Останова, то выходим, с EDX = 0
+ 000000C4  3C 20	      C 			cmp		al, ' '						; -если, символ не останова, ошибка Корректности символа
+ 000000C6  74 B9	      C 			je		@@StopExtract
+ 000000C8  3C 0A	      C 			cmp		al, 10
+ 000000CA  74 B5	      C 			je		@@StopExtract
+ 000000CC  3C 00	      C 			cmp		al, 0
+ 000000CE  74 B1	      C 			je		@@StopExtract
+ 000000D0  3C 0D	      C 			cmp		al, 13
+ 000000D2  74 AD	      C 			je		@@StopExtract
+			      C 											;-если, символ не останова, ошибка Корректности символа
+ 000000D4  EB DB	      C 			jmp		@@InvalidSymb
+			      C 	
+ 000000D6		      C @@EndProc:
+ 000000D6  C3		      C 			ret	
+			      C 		
+ 000000D7		      C Convert endp 
+			      C 
+				;
+				; Процедура, осуществляющая перевод содержимого строки в десятичное знаковое число
+				; 
+				; Вход:
+				;	DS:ESI - адрес строки
+				; Выход:	
+				;	EAX - код ошибки(2)
+				;
+ 000000D7			StrToInt  proc C cstr:dword, numptr:dword, last:dword
+ 000000DA  52					push	edx
+ 000000DB  51					push	ecx
+
+ 000000DC  8B 75 08				mov     esi, cstr
+ 000000DF  8A 06		        mov		al, byte ptr ds:[esi]
+ 000000E1  84 C0				test	al, al					;Если это нулевой байт
+ 000000E3  74 0E				jz		@@EmptyStr
+						
+ 000000E5  E8 FFFFFF43				call	Convert
+ 000000EA  8B 55 0C				mov edx, numptr
+ 000000ED  89 1A				mov [edx], ebx
+ 000000EF			@@EndProc:
+ 000000EF  59					pop		ecx
+ 000000F0  5A					pop		edx
+						ret
+						
+ 000000F3			@@EmptyStr:								; Ошибка = 2 - пустая строка
+ 000000F3  B8 8000F002				mov		eax, 8000F002h
+ 000000F8  EB F5				jmp		@@EndProc
+ 000000FA			StrToInt endp
+StrToInt.asm(39) : warning A6004:procedure argument or local not referenced : last
+				END
+Microsoft (R) Macro Assembler Version 14.00.24245.0	    04/21/20 14:52:58
+StrToInt.asm						     Symbols 2 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Class
+
+FLAT . . . . . . . . . . . . . .	GROUP
+STACK  . . . . . . . . . . . . .	32 Bit	 00000400 Para	  Stack	  'STACK'	 
+_DATA  . . . . . . . . . . . . .	32 Bit	 00000000 Para	  Public  'DATA'	
+_TEXT  . . . . . . . . . . . . .	32 Bit	 000000FA Para	  Public  'CODE'	
+
+
+Procedures, parameters, and locals:
+
+                N a m e                 Type     Value    Attr
+
+CheckZero  . . . . . . . . . . .	P Near	 00000012 _TEXT	Length= 0000001B Public C
+  @@SingleZero . . . . . . . . .	L Near	 0000001C _TEXT	
+  @@Negative . . . . . . . . . .	L Near	 00000022 _TEXT	
+  @@NegativeZero . . . . . . . .	L Near	 00000027 _TEXT	
+Convert  . . . . . . . . . . . .	P Near	 0000002D _TEXT	Length= 000000AA Public C
+  @@ExtractSymbol  . . . . . . .	L Near	 0000005A _TEXT	
+  @@Extract  . . . . . . . . . .	L Near	 00000060 _TEXT	
+  @@ExtractPos . . . . . . . . .	L Near	 00000065 _TEXT	
+  @@ExtractNeg . . . . . . . . .	L Near	 00000073 _TEXT	
+  @@StopExtract  . . . . . . . .	L Near	 00000081 _TEXT	
+  @@IsStop . . . . . . . . . . .	L Near	 0000008A _TEXT	
+  @@Overflow . . . . . . . . . .	L Near	 000000A0 _TEXT	
+  @@IsCorrect  . . . . . . . . .	L Near	 000000A7 _TEXT	
+  @@InvalidSymb  . . . . . . . .	L Near	 000000B1 _TEXT	
+  @@Zero . . . . . . . . . . . .	L Near	 000000B8 _TEXT	
+  @@EndProc  . . . . . . . . . .	L Near	 000000D6 _TEXT	
+IsNegative . . . . . . . . . . .	P Near	 00000006 _TEXT	Length= 0000000C Public C
+  @@Negative . . . . . . . . . .	L Near	 0000000B _TEXT	
+SkipSpace  . . . . . . . . . . .	P Near	 00000000 _TEXT	Length= 00000006 Public C
+  @@Loop . . . . . . . . . . . .	L Near	 00000000 _TEXT	
+StrToInt . . . . . . . . . . . .	P Near	 000000D7 _TEXT	Length= 00000023 Public C
+  cstr . . . . . . . . . . . . .	DWord	 bp + 00000008
+  numptr . . . . . . . . . . . .	DWord	 bp + 0000000C
+  last . . . . . . . . . . . . .	DWord	 bp + 00000010
+  @@EndProc  . . . . . . . . . .	L Near	 000000EF _TEXT	
+  @@EmptyStr . . . . . . . . . .	L Near	 000000F3 _TEXT	
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 00000000h   
+@DataSize  . . . . . . . . . . .	Number	 00000000h   
+@Interface . . . . . . . . . . .	Number	 00000001h   
+@Model . . . . . . . . . . . . .	Number	 00000007h   
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 FLAT
+@fardata?  . . . . . . . . . . .	Text   	 FLAT
+@fardata . . . . . . . . . . . .	Text   	 FLAT
+@stack . . . . . . . . . . . . .	Text   	 FLAT
+
+	   1 Warnings
+	   0 Errors
